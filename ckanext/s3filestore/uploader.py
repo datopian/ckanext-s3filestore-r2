@@ -59,8 +59,10 @@ class BaseS3Uploader(object):
         '''Return a boto bucket, creating it if it doesn't exist.'''
 
         # make s3 connection using boto3
-        s3 = self.get_s3_resource()
 
+        s3 = self.get_s3_session().resource('s3', endpoint_url=self.host_name,
+                                            config=botocore.client.Config(
+                                             signature_version=self.signature))
         bucket = s3.Bucket(bucket_name)
         try:
             # Validate the bucket when key doesn't have list bucket permission
@@ -70,16 +72,13 @@ class BaseS3Uploader(object):
         except botocore.exceptions.ClientError as e:
             error_code = int(e.response['Error']['Code'])
             if error_code == 404:
-                log.warning('Bucket {0} could not be found, '
+                log.warning('Bucket {0} could not be found, ' +
                             'attempting to create it...'.format(bucket_name))
                 try:
-                    bucket = \
-                        s3.create_bucket(Bucket=bucket_name,
-                                         CreateBucketConfiguration={
-                                             'LocationConstraint': self.region
-                                         })
+                    bucket = s3.create_bucket(Bucket=bucket_name, CreateBucketConfiguration={
+                        'LocationConstraint': self.region})
                     log.info(
-                        'Bucket {0} successfully created'.format(bucket_name))
+                        'Bucket {0} succesfully created'.format(bucket_name))
                 except botocore.exceptions.ClientError as e:
                     log.warning('Could not create bucket {0}: {1}'.format(
                         bucket_name, str(e)))
@@ -91,7 +90,7 @@ class BaseS3Uploader(object):
                     'Something went wrong for bucket {0}'.format(bucket_name))
 
         return bucket
-    
+
     def upload_to_key(self, filepath, upload_file, make_public=False):
         '''Uploads the `upload_file` to `filepath` on `self.bucket`.'''
         upload_file.seek(0)
