@@ -11,7 +11,7 @@ import ckan.lib.uploader as uploader
 from ckan.common import _, request, c, response
 from botocore.exceptions import ClientError
 
-from ckanext.s3filestore.uploader import S3Uploader
+from ckanext.s3filestore.uploader import S3Uploader, BaseS3Uploader
 import webob
 
 import logging
@@ -136,6 +136,17 @@ class S3Controller(base.BaseController):
             host_name = host_name[:-1]
         storage_path = S3Uploader.get_storage_path(upload_to)
         filepath = os.path.join(storage_path, filename)
+        base_uploader = BaseS3Uploader()
+
+        try:
+            url = base_uploader.get_signed_url_to_key(filepath)
+        except ClientError as ex:
+            if ex.response['Error']['Code'] in ['NoSuchKey', '404']:
+                 return abort(404, _('Keys not found on S3'))
+            else:
+                raise ex
+
+        return redirect(url)
         #host = config.get('ckanext.s3.filestore.hostname')
         # redirect_url = 'https://{bucket_name}.minio.omc.ckan.io/{filepath}' \
         #     .format(bucket_name=config.get('ckanext.s3filestore.aws_bucket_name'),

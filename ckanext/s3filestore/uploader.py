@@ -45,12 +45,16 @@ class BaseS3Uploader(object):
         self.signature = config.get('ckanext.s3filestore.signature_version')
         self.host_name = config.get('ckanext.s3filestore.host_name')
         self.bucket = self.get_s3_bucket(self.bucket_name)
+        self.download_proxy = \
+            config.get('ckanext.s3filestore.download_proxy', None)
+        self.signed_url_expiry = \
+            int(config.get('ckanext.s3filestore.signed_url_expiry', '60'))
 
     def get_directory(self, id, storage_path):
         directory = os.path.join(storage_path, id)
         return directory
 
-    def get_s3_session(self):
+    def get_s3_session(self, readOnly=False):
         return boto3.session.Session(aws_access_key_id=self.p_key,
                                      aws_secret_access_key=self.s_key,
                                      region_name=self.region)
@@ -90,6 +94,48 @@ class BaseS3Uploader(object):
                     'Something went wrong for bucket {0}'.format(bucket_name))
 
         return bucket
+    def get_s3_client(self, read_only=False):
+        return \
+            self.get_s3_session(read_only)\
+                .client('s3',
+                        endpoint_url=self.host_name,
+                        config=botocore.client.Config(
+                            signature_version=self.signature
+                            ),
+                        region_name=self.region)
+
+    def get_signed_url_to_key(self, key, extra_params={}, read_only=False):
+        '''Generates a pre-signed URL giving access to an S3 object.
+
+        If a download_proxy is configured, then the URL will be
+        generated using the true S3 host, and then the hostname will be
+        rewritten afterward. Note that the Host header is part of a
+        version 4 signature, so the resulting request, as it stands,
+        will fail signature verification; the download_proxy server must
+        be configured to set the Host header back to the true value when
+        forwarding the request (CloudFront does this automatically).
+        '''
+        if read_only:
+            # Use Read Only Key provided so that download can't alter file
+            client = self.get_s3_client(read_only=True)
+        else:
+            client = self.get_s3_client()
+        # check whether the object exists in S3
+        client.head_object(Bucket=self.bucket_name, Key=key)
+
+        params = {'Bucket': self.bucket_name,
+                  'Key': key
+                  }
+
+        params.update(extra_params)
+
+        url = client.generate_presigned_url(ClientMethod='get_object',
+                                            Params=params,
+                                            ExpiresIn=self.signed_url_expiry)
+        if self.download_proxy:
+            url = URL_HOST.sub(self.download_proxy + '/', url, 1)
+
+        return url
 
     def upload_to_key(self, filepath, upload_file, make_public=False):
         '''Uploads the `upload_file` to `filepath` on `self.bucket`.'''
