@@ -224,7 +224,10 @@ class S3Uploader(BaseS3Uploader):
             self.filename = munge.munge_filename_legacy(self.filename)
             self.filepath = os.path.join(self.storage_path, self.filename)
             data_dict[url_field] = self.filename
-            self.upload_file = _get_underlying_file(self.upload_field_storage)
+            if toolkit.check_ckan_version(min_version='2.7.0'):
+                self.upload_file = _get_underlying_file(self.upload_field_storage)
+            else:
+                self.upload_file = self.upload_field_storage.file
         # keep the file if there has been no change
         elif self.old_filename and not self.old_filename.startswith('http'):
             if not self.clear:
@@ -283,7 +286,10 @@ class S3ResourceUploader(BaseS3Uploader):
             resource['url'] = self.filename
             resource['url_type'] = 'upload'
             resource['last_modified'] = datetime.datetime.utcnow()
-            self.upload_file = _get_underlying_file(upload_field_storage)
+            if toolkit.check_ckan_version(min_version='2.7.0'):
+                self.upload_file = _get_underlying_file(self.upload_field_storage)
+            else:
+                self.upload_file = self.upload_field_storage.file
         elif self.clear and resource.get('id'):
             # New, not yet created resources can be marked for deletion if the
             # users cancels an upload and enters a URL instead.
