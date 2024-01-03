@@ -287,9 +287,9 @@ class S3ResourceUploader(BaseS3Uploader):
             resource['url_type'] = 'upload'
             resource['last_modified'] = datetime.datetime.utcnow()
             if toolkit.check_ckan_version(min_version='2.7.0'):
-                self.upload_file = _get_underlying_file(self.upload_field_storage)
+                self.upload_file = _get_underlying_file(upload_field_storage)
             else:
-                self.upload_file = self.upload_field_storage.file
+                self.upload_file = upload_field_storage.file
         elif self.clear and resource.get('id'):
             # New, not yet created resources can be marked for deletion if the
             # users cancels an upload and enters a URL instead.
