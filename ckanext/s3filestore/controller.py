@@ -10,11 +10,20 @@ import ckan.model as model
 import ckan.lib.uploader as uploader
 from ckan.common import _, request, c, response
 from botocore.exceptions import ClientError
+import calendar
+from datetime import datetime, timedelta
+
+import redis
+
+redis_url = config.get("ckan.redis.url", "redis://localhost:6379/1")
+redis_client = redis.StrictRedis(host="localhost", port=6379, db=1)
+
 
 from ckanext.s3filestore.uploader import S3Uploader, BaseS3Uploader
 import webob
 
 import logging
+
 log = logging.getLogger(__name__)
 
 NotFound = logic.NotFound
@@ -25,67 +34,76 @@ redirect = toolkit.redirect_to
 
 
 class S3Controller(base.BaseController):
-
     def resource_download(self, id, resource_id, filename=None):
-        '''
+        """
         Provide a download by either redirecting the user to the url stored or
         downloading the uploaded file from S3.
-        '''
-        context = {'model': model, 'session': model.Session,
-                   'user': c.user or c.author, 'auth_user_obj': c.userobj}
+        """
+        context = {
+            "model": model,
+            "session": model.Session,
+            "user": c.user or c.author,
+            "auth_user_obj": c.userobj,
+        }
 
         try:
-            rsc = get_action('resource_show')(context, {'id': resource_id})
-            get_action('package_show')(context, {'id': id})
+            rsc = get_action("resource_show")(context, {"id": resource_id})
+            get_action("package_show")(context, {"id": id})
         except NotFound:
-            abort(404, _('Resource not found'))
+            abort(404, _("Resource not found"))
         except NotAuthorized:
-            abort(401, _('Unauthorized to read resource %s') % id)
+            abort(401, _("Unauthorized to read resource %s") % id)
 
-        if rsc.get('url_type') == 'upload':
+        if rsc.get("url_type") == "upload":
             upload = uploader.get_resource_uploader(rsc)
-            bucket_name = config.get('ckanext.s3filestore.aws_bucket_name')
-            region = config.get('ckanext.s3filestore.region_name')
-            host_name = config.get('ckanext.s3filestore.host_name')
+            bucket_name = config.get("ckanext.s3filestore.aws_bucket_name")
+            region = config.get("ckanext.s3filestore.region_name")
+            host_name = config.get("ckanext.s3filestore.host_name")
             bucket = upload.get_s3_bucket(bucket_name)
 
             if filename is None:
-                filename = os.path.basename(rsc['url'])
-            key_path = upload.get_path(rsc['id'], filename)
+                filename = os.path.basename(rsc["url"])
+            key_path = upload.get_path(rsc["id"], filename)
             key = filename
 
             if key is None:
-                log.warn('Key \'{0}\' not found in bucket \'{1}\''
-                         .format(key_path, bucket_name))
+                log.warn(
+                    "Key '{0}' not found in bucket '{1}'".format(key_path, bucket_name)
+                )
 
             try:
                 # Small workaround to manage downloading of large files
                 # We are using redirect to minio's resource public URL
                 s3 = upload.get_s3_session()
-                client = s3.client(service_name='s3', endpoint_url=host_name)
-                url = client.generate_presigned_url(ClientMethod='get_object',
-                                                    Params={'Bucket': bucket.name,
-                                                            'Key': key_path},
-                                                    ExpiresIn=60)
+                client = s3.client(service_name="s3", endpoint_url=host_name)
+                url = client.generate_presigned_url(
+                    ClientMethod="get_object",
+                    Params={"Bucket": bucket.name, "Key": key_path},
+                    ExpiresIn=60,
+                )
                 redirect(url)
 
             except ClientError as ex:
-                if ex.response['Error']['Code'] == 'NoSuchKey':
+                if ex.response["Error"]["Code"] == "NoSuchKey":
                     # attempt fallback
                     if config.get(
-                            'ckanext.s3filestore.filesystem_download_fallback',
-                            False):
-                        log.info('Attempting filesystem fallback for resource {0}'
-                                 .format(resource_id))
+                        "ckanext.s3filestore.filesystem_download_fallback", False
+                    ):
+                        log.info(
+                            "Attempting filesystem fallback for resource {0}".format(
+                                resource_id
+                            )
+                        )
                         url = toolkit.url_for(
-                            controller='ckanext.s3filestore.controller:S3Controller',
-                            action='filesystem_resource_download',
+                            controller="ckanext.s3filestore.controller:S3Controller",
+                            action="filesystem_resource_download",
                             id=id,
                             resource_id=resource_id,
-                            filename=filename)
+                            filename=filename,
+                        )
                         redirect(url)
 
-                    abort(404, _('Resource data not found'))
+                    abort(404, _("Resource data not found"))
                 else:
                     raise ex
 
@@ -98,61 +116,99 @@ class S3Controller(base.BaseController):
         Provide a direct download by either redirecting the user to the url
         stored or downloading an uploaded file directly.
         """
-        context = {'model': model, 'session': model.Session,
-                   'user': c.user or c.author, 'auth_user_obj': c.userobj}
+        context = {
+            "model": model,
+            "session": model.Session,
+            "user": c.user or c.author,
+            "auth_user_obj": c.userobj,
+        }
 
         try:
-            rsc = get_action('resource_show')(context, {'id': resource_id})
-            get_action('package_show')(context, {'id': id})
+            rsc = get_action("resource_show")(context, {"id": resource_id})
+            get_action("package_show")(context, {"id": id})
         except NotFound:
-            abort(404, _('Resource not found'))
+            abort(404, _("Resource not found"))
         except NotAuthorized:
-            abort(401, _('Unauthorized to read resource %s') % id)
+            abort(401, _("Unauthorized to read resource %s") % id)
 
-        if rsc.get('url_type') == 'upload':
+        if rsc.get("url_type") == "upload":
             upload = uploader.ResourceUpload(rsc)
-            filepath = upload.get_path(rsc['id'])
+            filepath = upload.get_path(rsc["id"])
             fileapp = paste.fileapp.FileApp(filepath)
             try:
                 status, headers, app_iter = request.call_application(fileapp)
             except OSError:
-                abort(404, _('Resource data not found'))
+                abort(404, _("Resource data not found"))
             response.headers.update(dict(headers))
-            content_type, content_enc = mimetypes.guess_type(rsc.get('url',
-                                                                     ''))
+            content_type, content_enc = mimetypes.guess_type(rsc.get("url", ""))
             if content_type:
-                response.headers['Content-Type'] = content_type
+                response.headers["Content-Type"] = content_type
             response.status = status
             return app_iter
-        elif 'url' not in rsc:
-            abort(404, _('No download is available'))
-        redirect(str(rsc['url']))
+        elif "url" not in rsc:
+            abort(404, _("No download is available"))
+        redirect(str(rsc["url"]))
+
+    def get_cached_url(self, filepath):
+        """Check if URL is cached in Redis and return it if not expired."""
+        cached_data = redis_client.hgetall(filepath)
+        if cached_data:
+            url = cached_data.get(b'url')
+            expiration_timestamp = float(cached_data.get(b'expiration_timestamp'))
+            if datetime.now() < datetime.fromtimestamp(expiration_timestamp):
+                return url.decode('utf-8')
+        return None
+
+    def cache_url(self, filepath, url, expiration_days=6):
+        """Cache the URL in Redis with expiration timestamp."""
+        expiration_datetime = datetime.now() + timedelta(days=expiration_days)
+        expiration_timestamp = int(calendar.timegm(expiration_datetime.utctimetuple()))
+        redis_client.hmset(filepath, {'url': url, 'expiration_timestamp': expiration_timestamp})
+
+    def revalidate_cache(self,filepath):
+        """Revalidate the cached URL by attempting to access it again."""
+        try:
+            base_uploader = BaseS3Uploader()
+            url = base_uploader.get_signed_url_to_key(filepath)
+            self.cache_url(filepath, url)  # Cache the updated URL
+            return url
+        except ClientError as ex:
+            if ex.response['Error']['Code'] == '403':
+                # If still Forbidden, remove the cached entry and return None
+                redis_client.delete(filepath)
+                return None
+            else:
+                raise ex
 
     def uploaded_file_redirect(self, upload_to, filename):
-        '''Redirect static file requests to their location on S3.'''
-        host_name = config.get('ckanext.s3filestore.host_name')
-        # Remove last characted if it's a slash
-        if host_name[-1] == '/':
-            host_name = host_name[:-1]
+        """Redirect static file requests to their location on S3."""
         storage_path = S3Uploader.get_storage_path(upload_to)
         filepath = os.path.join(storage_path, filename)
         base_uploader = BaseS3Uploader()
 
+        # Check if URL is cached and not expired
+        cached_url = self.get_cached_url(filepath)
+        if cached_url:
+            revalidated_url = self.revalidate_cache(filepath)
+            if revalidated_url:
+                return redirect(revalidated_url)
+
         try:
             url = base_uploader.get_signed_url_to_key(filepath)
+            self.cache_url(filepath, url)  # Cache the URL in Redis
         except ClientError as ex:
-            if ex.response['Error']['Code'] in ['NoSuchKey', '404']:
-                 return abort(404, _('Keys not found on S3'))
+            if ex.response["Error"]["Code"] in ["NoSuchKey", "404"]:
+                return abort(404, _("Keys not found on S3"))
             else:
                 raise ex
-
         return redirect(url)
-        #host = config.get('ckanext.s3.filestore.hostname')
+        # host = config.get('ckanext.s3.filestore.hostname')
         # redirect_url = 'https://{bucket_name}.minio.omc.ckan.io/{filepath}' \
         #     .format(bucket_name=config.get('ckanext.s3filestore.aws_bucket_name'),
         #             filepath=filepath)
-        redirect_url = '{host_name}/{bucket_name}/{filepath}'\
-                          .format(bucket_name=config.get('ckanext.s3filestore.aws_bucket_name'),
-                          filepath=filepath,
-                          host_name=host_name)
+        redirect_url = "{host_name}/{bucket_name}/{filepath}".format(
+            bucket_name=config.get("ckanext.s3filestore.aws_bucket_name"),
+            filepath=filepath,
+            host_name=host_name,
+        )
         redirect(redirect_url)
