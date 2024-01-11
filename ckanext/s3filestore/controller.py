@@ -169,7 +169,9 @@ class S3Controller(base.BaseController):
         return None
 
     def cache_url(self, filepath, url):
-        expiration_time = config.get("ckanext.s3filestore.cache_expiration_time", 300)
+        expiration_time = int(
+            config.get("ckanext.s3filestore.cache_expiration_time", 300)
+        )
         """Cache the URL in Redis with expiration timestamp."""
         expiration_datetime = datetime.now() + timedelta(seconds=expiration_time)
         expiration_timestamp = int(calendar.timegm(expiration_datetime.utctimetuple()))
