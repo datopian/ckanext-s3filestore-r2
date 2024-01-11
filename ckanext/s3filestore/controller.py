@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 import redis
 
 redis_url = config.get("ckan.redis.url", "redis://localhost:6379/1")
-redis_client = redis.StrictRedis(host="localhost", port=6379, db=1)
+redis_client = redis.StrictRedis(redis_url)
 
 
 from ckanext.s3filestore.uploader import S3Uploader, BaseS3Uploader
@@ -188,6 +188,7 @@ class S3Controller(base.BaseController):
         # Check if URL is cached and not expired
         cached_url = self.get_cached_url(filepath)
         if cached_url:
+            log.info("Redirecting to cached URL: %s", cached_url)
             return redirect(cached_url)
 
         try:
