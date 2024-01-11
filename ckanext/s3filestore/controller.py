@@ -60,6 +60,7 @@ class S3Controller(base.BaseController):
             region = config.get("ckanext.s3filestore.region_name")
             host_name = config.get("ckanext.s3filestore.host_name")
             bucket = upload.get_s3_bucket(bucket_name)
+            signed_url_expiry = int(config.get('ckanext.s3filestore.signed_url_expiry', '60'))
 
             if filename is None:
                 filename = os.path.basename(rsc["url"])
@@ -79,7 +80,7 @@ class S3Controller(base.BaseController):
                 url = client.generate_presigned_url(
                     ClientMethod="get_object",
                     Params={"Bucket": bucket.name, "Key": key_path},
-                    ExpiresIn=60,
+                    ExpiresIn=signed_url_expiry,
                 )
                 redirect(url)
 
@@ -159,26 +160,13 @@ class S3Controller(base.BaseController):
                 return url.decode('utf-8')
         return None
 
-    def cache_url(self, filepath, url, expiration_days=6):
+    def cache_url(self, filepath, url):
+        expiration_time = config.get("ckanext.s3filestore.cache_expiration_time", 300)
         """Cache the URL in Redis with expiration timestamp."""
-        expiration_datetime = datetime.now() + timedelta(days=expiration_days)
+        expiration_datetime = datetime.now() + timedelta(seconds=expiration_time)
         expiration_timestamp = int(calendar.timegm(expiration_datetime.utctimetuple()))
         redis_client.hmset(filepath, {'url': url, 'expiration_timestamp': expiration_timestamp})
 
-    def revalidate_cache(self,filepath):
-        """Revalidate the cached URL by attempting to access it again."""
-        try:
-            base_uploader = BaseS3Uploader()
-            url = base_uploader.get_signed_url_to_key(filepath)
-            self.cache_url(filepath, url)  # Cache the updated URL
-            return url
-        except ClientError as ex:
-            if ex.response['Error']['Code'] == '403':
-                # If still Forbidden, remove the cached entry and return None
-                redis_client.delete(filepath)
-                return None
-            else:
-                raise ex
 
     def uploaded_file_redirect(self, upload_to, filename):
         """Redirect static file requests to their location on S3."""
@@ -189,14 +177,13 @@ class S3Controller(base.BaseController):
         # Check if URL is cached and not expired
         cached_url = self.get_cached_url(filepath)
         if cached_url:
-            revalidated_url = self.revalidate_cache(filepath)
-            if revalidated_url:
-                return redirect(revalidated_url)
+            return redirect(cached_url)
 
         try:
             url = base_uploader.get_signed_url_to_key(filepath)
             self.cache_url(filepath, url)  # Cache the URL in Redis
         except ClientError as ex:
+            redis_client.delete(filepath)
             if ex.response["Error"]["Code"] in ["NoSuchKey", "404"]:
                 return abort(404, _("Keys not found on S3"))
             else:
