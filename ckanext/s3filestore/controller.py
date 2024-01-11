@@ -60,7 +60,9 @@ class S3Controller(base.BaseController):
             region = config.get("ckanext.s3filestore.region_name")
             host_name = config.get("ckanext.s3filestore.host_name")
             bucket = upload.get_s3_bucket(bucket_name)
-            signed_url_expiry = int(config.get('ckanext.s3filestore.signed_url_expiry', '60'))
+            signed_url_expiry = int(
+                config.get("ckanext.s3filestore.signed_url_expiry", "60")
+            )
 
             if filename is None:
                 filename = os.path.basename(rsc["url"])
@@ -79,7 +81,12 @@ class S3Controller(base.BaseController):
                 client = s3.client(service_name="s3", endpoint_url=host_name)
                 url = client.generate_presigned_url(
                     ClientMethod="get_object",
-                    Params={"Bucket": bucket.name, "Key": key_path},
+                    Params={
+                        "Bucket": bucket.name,
+                        "Key": key_path,
+                        "ResponseContentDisposition": f"attachment; filename={filename}",
+                        "ResponseContentType": "application/octet-stream",
+                    },
                     ExpiresIn=signed_url_expiry,
                 )
                 redirect(url)
@@ -154,10 +161,10 @@ class S3Controller(base.BaseController):
         """Check if URL is cached in Redis and return it if not expired."""
         cached_data = redis_client.hgetall(filepath)
         if cached_data:
-            url = cached_data.get(b'url')
-            expiration_timestamp = float(cached_data.get(b'expiration_timestamp'))
+            url = cached_data.get(b"url")
+            expiration_timestamp = float(cached_data.get(b"expiration_timestamp"))
             if datetime.now() < datetime.fromtimestamp(expiration_timestamp):
-                return url.decode('utf-8')
+                return url.decode("utf-8")
         return None
 
     def cache_url(self, filepath, url):
@@ -165,8 +172,9 @@ class S3Controller(base.BaseController):
         """Cache the URL in Redis with expiration timestamp."""
         expiration_datetime = datetime.now() + timedelta(seconds=expiration_time)
         expiration_timestamp = int(calendar.timegm(expiration_datetime.utctimetuple()))
-        redis_client.hmset(filepath, {'url': url, 'expiration_timestamp': expiration_timestamp})
-
+        redis_client.hmset(
+            filepath, {"url": url, "expiration_timestamp": expiration_timestamp}
+        )
 
     def uploaded_file_redirect(self, upload_to, filename):
         """Redirect static file requests to their location on S3."""
