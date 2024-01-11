@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 import redis
 
 redis_url = config.get("ckan.redis.url", "redis://localhost:6379/1")
-redis_client = redis.StrictRedis(redis_url)
+redis_client = redis.StrictRedis.from_url(redis_url)
 
 
 from ckanext.s3filestore.uploader import S3Uploader, BaseS3Uploader
