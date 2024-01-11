@@ -79,12 +79,13 @@ class S3Controller(base.BaseController):
                 # We are using redirect to minio's resource public URL
                 s3 = upload.get_s3_session()
                 client = s3.client(service_name="s3", endpoint_url=host_name)
+                contentDeposition = "attachment; filename=" + filename
                 url = client.generate_presigned_url(
                     ClientMethod="get_object",
                     Params={
                         "Bucket": bucket.name,
                         "Key": key_path,
-                        "ResponseContentDisposition": f"attachment; filename={filename}",
+                        "ResponseContentDisposition": contentDeposition,
                         "ResponseContentType": "application/octet-stream",
                     },
                     ExpiresIn=signed_url_expiry,
