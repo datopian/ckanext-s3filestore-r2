@@ -96,7 +96,15 @@ class S3FileStorePlugin(plugins.SingletonPlugin):
         '''Required by IResourceController'''
         pass
 
+    def before_update(self, context, current, resource_dict):
+        '''Required by IResourceController'''
+        pass
+
     def after_resource_update(self, context, resource_dict):
+        '''Required by IResourceController'''
+        pass
+
+    def after_update(self, context, resource_dict):
         '''Required by IResourceController'''
         pass
 
