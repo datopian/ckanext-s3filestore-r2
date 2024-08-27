@@ -75,12 +75,23 @@ class S3FileStorePlugin(plugins.SingletonPlugin):
         return [upload_resources]
 
     # IResourceController
+    def before_resource_create(self, context, resource_dict):
+        '''Required by IResourceController'''
+        pass
 
     def before_create(self, context, resource_dict):
         '''Required by IResourceController'''
         pass
+    
+    def before_resource_show(self, resource_dict):
+        '''Required by IResourceController'''
+        pass
 
     def before_show(self, resource_dict):
+        '''Required by IResourceController'''
+        pass
+    
+    def after_resource_create(self, context, resource_dict):
         '''Required by IResourceController'''
         pass
 
