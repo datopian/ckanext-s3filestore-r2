@@ -83,10 +83,6 @@ class S3FileStorePlugin(plugins.SingletonPlugin):
         '''Required by IResourceController'''
         pass
     
-    def before_resource_show(self, resource_dict):
-        '''Required by IResourceController'''
-        pass
-
     def before_show(self, resource_dict):
         '''Required by IResourceController'''
         pass
@@ -119,8 +115,54 @@ class S3FileStorePlugin(plugins.SingletonPlugin):
         '''Required by IResourceController'''
         pass
 
+    def before_resource_delete(self, context, resource, resources):
+        u'''
+        Extensions will receive this before a resource is deleted.
+
+        :param context: The context object of the current request, this
+            includes for example access to the ``model`` and the ``user``.
+        :type context: dictionary
+        :param resource: An object representing the resource that is about
+            to be deleted. This is a dictionary with one key: ``id`` which
+            holds the id ``string`` of the resource that should be deleted.
+        :type resource: dictionary
+        :param resources: The list of resources from which the resource will
+            be deleted (including the resource to be deleted if it existed
+            in the dataset).
+        :type resources: list
+        '''
+        for rs in resources:
+            if rs.get('id') == resource.get('id'):
+                ckanext.s3filestore.uploader.delete_from_bucket(rs)
+
+    def after_resource_delete(self, context, resources):
+        u'''
+        Extensions will receive this after a resource is deleted.
+
+        :param context: The context object of the current request, this
+            includes for example access to the ``model`` and the ``user``.
+        :type context: dictionary
+        :param resources: A list of objects representing the remaining
+            resources after a resource has been removed.
+        :type resource: list
+        '''
+        pass
+
     def before_delete(self, context, resource, resources):
         # Delete the resource from the storage
         for rs in resources:
             if rs.get('id') == resource.get('id'):
                 ckanext.s3filestore.uploader.delete_from_bucket(rs)
+    
+    def before_resource_show(self, resource_dict):
+        u'''
+        Extensions will receive the validated data dict before the resource
+        is ready for display.
+
+        Be aware that this method is not only called for UI display, but also
+        in other methods, like when a resource is deleted, because package_show
+        is used to get access to the resources in a dataset.
+        '''
+        return resource_dict
+
+    
