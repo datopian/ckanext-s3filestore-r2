@@ -328,9 +328,10 @@ class S3ResourceUploader(BaseS3Uploader):
 
             # Check the resource format from its filename extension,
             # if no extension use the default CKAN implementation
-            resource_format = os.path.splitext(self.filename)[1][1:]
-            if resource_format:
-                resource['format'] = resource_format
+            if 'format' not in resource:
+                resource_format = os.path.splitext(self.filename)[1][1:]
+                if resource_format:
+                    resource['format'] = resource_format
 
             self.upload_file = _get_underlying_file(upload_field_storage)
             self.upload_file.seek(0, os.SEEK_END)
